@@ -1,0 +1,44 @@
+* Find duplicate files
+Duplicate files are defined as files with the same hash. This doc discusses efficient ways for finding duplicate files within a file system.
+
+** Comparing hashes
+The first idea that comes to mind is to recursively walk through the directory tree, hash each file along the way, and put the hash in a hash map inside the memory. This way we can see if we have encountered this hash previously to decide if there are duplicates.
+
+This approach works for smaller file systems, but won't work for larger ones with Gigabytes of data.
+
+** Pre-processing
+Usually for this task, we are looking at file systems with its majority of files looking very different from each other. It is much easier to tell if two files are different than to tell if they are exactly the same, so there is really no need to hash entire files.
+
+With this in mind, we could perform some preprocessing to find files that might be duplicates, and then only hash the selected files. 
+
++ Files of the exact same size may be duplicates
++ Files whose first 1kb hash to the same value may be duplicates
+
+After preprocessing, all the files that cannot be duplicates are ruled out. We could perform hashing only on the possible duplicates. This approach makes it possible to find duplicates in a directory full of videos.
+
+#+BEGIN_SRC bash
+# Preprocessing hash 1kb
+function hash1kb {
+    dd bs=512 count=2 if=$1 2>/dev/null | md5
+}
+
+for file in $(find . -name \*.mp4); do
+    hash=$(hash1kb $file)
+    echo $hash >> hashes.txt
+    echo $hash $file >> mapping.txt
+done
+
+for hash in $(sort hashes.txt | uniq -d); do
+    grep $hash mapping.txt
+done
+#+END_SRC
+
+** Running continually
+The method discussed above works fine for one time use. To extend this, consider a scenario where files are constantly added to the file system and you want to continually monitor duplicate files.
+
+In this case, you will want to process the entire file system each time a file is added; you will want to store some preprocessing result.
+
+In the case where it is possible to hash all the existing files in the file system, one could store those hashes in a file, and when a new file comes in, compare its hash with what's in the file to see if it is a duplicate.
+
+If the files are too large to go through, one could store the size of each file or the hash of the first 1kb. When a new file comes in, compare its "fingerprint" with what's in the file. If the fingerprint matches with an existing file, hash both files to confirm if they are duplicates. This way, we don't have to hash each file in the file system. We could also cache the entire file hash in a file so that we do not have to hash again in the future.
+
